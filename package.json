@@ -1,0 +1,48 @@
+{
+  "name": "smart-patient-order-bn",
+  "version": "1.0.0",
+  "description": "Smart patient order system backend",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node src/seeds/user.seed.js",
+    "test": "echo \"No tests specified yet\" && exit 0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Virgile1k/smart-patient-order-bn.git"
+  },
+  "keywords": [
+    "smart",
+    "patient",
+    "healthcare",
+    "backend"
+  ],
+  "author": "Legend",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Virgile1k/smart-patient-order-bn/issues"
+  },
+  "homepage": "https://github.com/Virgile1k/smart-patient-order-bn#readme",
+  "dependencies": {
+    "axios": "^1.8.3",
+    "bcryptjs": "^3.0.2",
+    "body-parser": "^1.20.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.1",
+    "firebase": "^11.4.0",
+    "firebase-admin": "^13.2.0",
+    "http": "^0.0.1-security",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
