@@ -95,7 +95,6 @@ const registerPatient = async (patientData) => {
     const { patientId } = await createPatient(patientData);
     const patient = await getPatientById(patientId);
 
-    // Add patient to the queue with AI-analyzed severity
     const queueInfo = await patientQueue.addPatient({
       id: patientId,
       vitals: patientData.vitals,
@@ -103,7 +102,6 @@ const registerPatient = async (patientData) => {
       additionalNotes: patientData.additionalNotes,
     });
 
-    // Update Firestore with queue information
     await updatePatient(patientId, {
       severity: queueInfo.severity,
       status: 'Queued',
@@ -111,9 +109,21 @@ const registerPatient = async (patientData) => {
       queuePosition: queueInfo.queuePosition,
     });
 
-    // Check if queue threshold is met and attempt assignment
     if (patientQueue.getQueueLength() >= MIN_QUEUE_THRESHOLD) {
-      await tryAutoAssign();
+      const assignmentResult = await tryAutoAssign();
+      if (assignmentResult.assigned > 0) {
+        const updatedPatient = await getPatientById(patientId);
+        return {
+          patientId,
+          severity: queueInfo.severity,
+          status: 'Assigned',
+          queueType: queueInfo.severity,
+          queuePosition: null,
+          estimatedWaitTime: 0,
+          assignedStaff: updatedPatient.assignedStaff,
+          message: `Patient registered and assigned to doctor (Batch assignment: ${assignmentResult.assigned} patients to ${assignmentResult.doctorsUsed} doctors)`,
+        };
+      }
     }
 
     return {
@@ -207,7 +217,6 @@ const getAssignedPatients = async (doctorId) => {
       });
     });
     
-    console.log(`Fetched ${patients.length} assigned patients for doctor ${doctorId}`);
     return patients;
   } catch (error) {
     throw new Error(`Failed to fetch assigned patients: ${error.message}`);
@@ -241,7 +250,6 @@ const processWaitingQueue = async () => {
     processed++;
   }
   
-  // Check if threshold is met after processing waiting patients
   if (patientQueue.getQueueLength() >= MIN_QUEUE_THRESHOLD) {
     await tryAutoAssign();
   }
@@ -345,7 +353,7 @@ const assignNextPatient = async (doctorId) => {
   };
 };
 
- const updatePatientStatus = async (patientId, status) => {
+const updatePatientStatus = async (patientId, status) => {
   const patient = await getPatientById(patientId);
   if (!patient) throw new Error(`Patient with ID ${patientId} not found`);
   
@@ -383,12 +391,11 @@ const assignNextPatient = async (doctorId) => {
   
   const updatedPatient = await getPatientById(patientId);
   
-  // Emit to public namespace
   io.of('/public').emit('patientStatusUpdated', {
     patientId,
     status,
     updatedData: {
-      patientId: patientId, // Ensure patientId is set
+      patientId: patientId,
       severity: updatedPatient.severity,
       queueType: updatedPatient.queueType,
       status: updatedPatient.status,
@@ -412,7 +419,6 @@ const getDoctorDailyStats = async (doctorId, targetDate) => {
     const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
     const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
-    // Firestore query with multiple where clauses
     const q = query(
       collection(db, 'patients'),
       where('assignedStaff.doctor.id', '==', doctorId),
@@ -440,7 +446,6 @@ const getDoctorDailyStats = async (doctorId, targetDate) => {
 
     return patients;
   } catch (error) {
-    // Specific handling for index-related errors
     if (error.code === 'FAILED_PRECONDITION' && error.message.includes('requires an index')) {
       throw new Error(
         'Query requires a composite index. Please create it in the Firebase Console: ' +
@@ -489,80 +494,94 @@ const getAdminReport = async (startDate, endDate) => {
   }
 };
 
-// Try to assign patients automatically wphen queue threshold is met
 const tryAutoAssign = async () => {
-  if (patientQueue.getQueueLength() < MIN_QUEUE_THRESHOLD) {
-    console.log(`Queue length (${patientQueue.getQueueLength()}) below threshold (${MIN_QUEUE_THRESHOLD}). Waiting for more patients.`);
+  const queueLength = patientQueue.getQueueLength();
+  if (queueLength < MIN_QUEUE_THRESHOLD) {
+    console.log(`Queue length (${queueLength}) below threshold (${MIN_QUEUE_THRESHOLD}). Waiting for more patients.`);
     return { assigned: 0 };
   }
 
   const availableStaff = await getAvailableStaff();
   const availableDoctors = availableStaff.filter((s) => s.role === 'Doctor');
-  const nextPatients = patientQueue.getNextPatients(availableDoctors.length);
-
-  if (nextPatients.length === 0 || availableDoctors.length === 0) {
-    console.log('No patients to assign or no doctors available');
+  
+  if (availableDoctors.length === 0) {
+    console.log('No doctors available for assignment');
     return { assigned: 0 };
   }
 
-  let assignedCount = 0;
-
-  for (const entry of nextPatients) {
-    const patientId = entry.patient.id;
-    const doctor = availableDoctors.shift(); // Take the next available doctor
-
-    if (!doctor) break; // No more doctors available
-
-    let nurse = null;
-    if (entry.severity === 'Critical') {
-      const availableNurses = availableStaff.filter((s) => s.role === 'Nurse');
-      nurse = availableNurses.shift();
-    }
-
-    const assignedStaff = {
-      doctor: {
-        id: doctor.staff_id,
-        name: doctor.fullName,
-        roomNumber: doctor.roomNumber || 'Not Assigned',
-      },
-      nurse: nurse
-        ? {
-            id: nurse.staff_id,
-            name: nurse.fullName,
-          }
-        : null,
-    };
-
-    await updatePatient(patientId, {
-      status: 'Assigned',
-      assignedStaff,
-    });
-
-    patientQueue.removePatient(patientId);
-    assignedCount++;
-
-    io.emit('patientAssigned', {
-      patientId,
-      doctorId: doctor.staff_id,
-      severity: entry.severity,
-      message: `Patient ${entry.patient.contact.name} assigned to Dr. ${doctor.fullName}`,
-      roomNumber: doctor.roomNumber || 'Not Assigned',
-      timestamp: new Date().toISOString(),
-    });
+  const nextPatients = patientQueue.getNextPatients(queueLength);
+  if (nextPatients.length === 0) {
+    console.log('No patients to assign');
+    return { assigned: 0 };
   }
 
-  console.log(`Automatically assigned ${assignedCount} patients`);
-  return { assigned: assignedCount };
+  const patientsPerDoctor = Math.floor(nextPatients.length / availableDoctors.length);
+  const remainder = nextPatients.length % availableDoctors.length;
+  let assignedCount = 0;
+  let patientIndex = 0;
+
+  for (let i = 0; i < availableDoctors.length && patientIndex < nextPatients.length; i++) {
+    const doctor = availableDoctors[i];
+    const patientsForThisDoctor = patientsPerDoctor + (i < remainder ? 1 : 0);
+
+    for (let j = 0; j < patientsForThisDoctor && patientIndex < nextPatients.length; j++) {
+      const entry = nextPatients[patientIndex];
+      const patientId = entry.patient.id;
+
+      let nurse = null;
+      if (entry.severity === 'Critical') {
+        const availableNurses = availableStaff.filter((s) => s.role === 'Nurse');
+        nurse = availableNurses.shift();
+      }
+
+      const assignedStaff = {
+        doctor: {
+          id: doctor.staff_id,
+          name: doctor.fullName,
+          roomNumber: doctor.roomNumber || 'Not Assigned',
+        },
+        nurse: nurse
+          ? {
+              id: nurse.staff_id,
+              name: nurse.fullName,
+            }
+          : null,
+      };
+
+      await updatePatient(patientId, {
+        status: 'Assigned',
+        assignedStaff,
+      });
+
+      patientQueue.removePatient(patientId);
+      assignedCount++;
+
+      io.emit('patientAssigned', {
+        patientId,
+        doctorId: doctor.staff_id,
+        severity: entry.severity,
+        message: `Patient ${entry.patient.contact.name} assigned to Dr. ${doctor.fullName}`,
+        roomNumber: doctor.roomNumber || 'Not Assigned',
+        timestamp: new Date().toISOString(),
+      });
+
+      patientIndex++;
+    }
+  }
+
+  console.log(`Automatically assigned ${assignedCount} patients equally among ${availableDoctors.length} doctors`);
+  return { 
+    assigned: assignedCount,
+    doctorsUsed: availableDoctors.length,
+    patientsPerDoctor: patientsPerDoctor
+  };
 };
 
-// Monitor queue and staff availability in real-time
 const startQueueMonitoring = () => {
-  // Update queue priorities every 30 seconds
   setInterval(() => {
     patientQueue.updatePriorities();
   }, 30000);
 
-  // Listen to new patient registrations (triggered by Firestore updates)
   const patientsQuery = query(collection(db, 'patients'), where('status', '==', 'Queued'));
   onSnapshot(patientsQuery, async (snapshot) => {
     snapshot.docChanges().forEach(async (change) => {
@@ -574,7 +593,6 @@ const startQueueMonitoring = () => {
     });
   });
 
-  // Listen to staff availability changes
   const staffQuery = query(collection(db, 'staff'), where('status', '==', 'available'));
   onSnapshot(staffQuery, async (snapshot) => {
     if (!snapshot.empty && patientQueue.getQueueLength() >= MIN_QUEUE_THRESHOLD) {
@@ -583,7 +601,6 @@ const startQueueMonitoring = () => {
   });
 };
 
-// Fetch all patients ever assigned to a doctor
 const getAllDoctorPatients = async (doctorId) => {
   try {
     const q = query(
@@ -642,7 +659,6 @@ const getAllPatients = async () => {
   }
 };
 
-// Start the monitoring system
 startQueueMonitoring();
 
 export { 
@@ -659,9 +675,8 @@ export {
   assignNextPatient,
   updatePatientStatus,
   getQueueStats,
-  getDoctorDailyStats,  // New
+  getDoctorDailyStats,
   getAdminReport,
   getAllDoctorPatients,
   getAllPatients 
-
 };

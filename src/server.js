@@ -10,11 +10,18 @@ dotenv.config();
 const { PORT } = process.env;
 
 const server = http.createServer(app);
+
+// Configure Socket.IO with detailed CORS settings
 const io = new Server(server, {
   cors: {
-    origin: '*', // Adjust for production
-    methods: ['GET', 'POST'],
+    origin: ["https://develop.d25dp759okci7n.amplifyapp.com", "http://localhost:3000", "http://localhost:5173"],
+    methods: ["GET", "POST", "PUT","PATCH", "DELETE", "OPTIONS"],
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    transports: ['websocket', 'polling'],
   },
+  allowEIO3: true, // Allow compatibility with Socket.IO v2 clients
+  pingTimeout: 60000, // Increase ping timeout for slower connections
 });
 
 // Authenticated namespace (default)
@@ -29,14 +36,28 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('User disconnected from default namespace:', socket.id);
   });
+
+  socket.on('error', (error) => {
+    console.error('Socket error in default namespace:', error);
+  });
 });
 
-// Public namespace for hospital display
+// Public namespace for hospital display with explicit CORS settings
 const publicIo = io.of('/public');
+publicIo.use((socket, next) => {
+  // You could add additional middleware for the public namespace here
+  next();
+});
+
 publicIo.on('connection', (socket) => {
   console.log('Public display connected:', socket.id);
+  
   socket.on('disconnect', () => {
     console.log('Public display disconnected:', socket.id);
+  });
+  
+  socket.on('error', (error) => {
+    console.error('Socket error in public namespace:', error);
   });
 });
 

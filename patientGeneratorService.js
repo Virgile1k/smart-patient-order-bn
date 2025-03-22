@@ -1,4 +1,4 @@
-import { startGenerator, stopGenerator, getGeneratorStats, updateGeneratorSettings, registerRandomPatient } from './randomgenerator.js';
+ import { startGenerator, stopGenerator, getGeneratorStats, updateGeneratorSettings, registerRandomPatient } from './randomgenerator.js';
 import cron from 'node-cron';
 
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -8,10 +8,10 @@ let cronJob = null;
 function configurePatientGenerator() {
   console.log('Configuring scheduled patient generator...');
   
-  // 10 patients every 2 minutes = 120000ms
+  // 1 patient every hour = 3600000ms
   const settings = updateGeneratorSettings({
-    interval: 120000, // 2 minutes in milliseconds
-    patientsPerBatch: 10 // Generate 10 patients each time
+    interval: 36000000, // 1 hour in milliseconds
+    patientsPerBatch: 1 // Generate 1 patient each time
   });
   
   console.log('Generator configured with settings:', settings);
@@ -24,11 +24,10 @@ async function generatePatientBatch() {
   
   startGenerator();
   
-  // Generate 10 patients in this batch
-  const promises = Array(10).fill().map(() => registerRandomPatient());
-  await Promise.all(promises);
+  // Generate 1 patient in this batch
+  await registerRandomPatient();
   
-  // Wait a short time to ensure all registrations complete
+  // Wait a short time to ensure registration completes
   await wait(1000);
   
   const stats = getGeneratorStats();
@@ -36,12 +35,11 @@ async function generatePatientBatch() {
   
   stopGenerator();
   
-  // Verify we generated 10 patients
-  if (stats.patientsGenerated < 10) {
-    console.log(`Generating ${10 - stats.patientsGenerated} additional patients to meet requirement...`);
-    const additionalPromises = Array(10 - stats.patientsGenerated).fill().map(() => registerRandomPatient());
-    await Promise.all(additionalPromises);
-    console.log('Required patients generated successfully');
+  // Verify we generated 1 patient
+  if (stats.patientsGenerated < 1) {
+    console.log(`Patient generation failed, attempting again...`);
+    await registerRandomPatient();
+    console.log('Required patient generated successfully');
   }
 }
 
@@ -55,8 +53,8 @@ function startPatientGeneratorService() {
   
   console.log('Starting scheduled patient generator service...');
   
-  // Schedule to run every 2 minutes
-  cronJob = cron.schedule('*/2 * * * *', async () => {
+  // Schedule to run every hour (at the beginning of each hour)
+  cronJob = cron.schedule('0 * * * *', async () => {
     try {
       await generatePatientBatch();
     } catch (error) {
@@ -64,7 +62,7 @@ function startPatientGeneratorService() {
     }
   });
   
-  console.log('Patient generator scheduled to run every 2 minutes (10 patients/batch)');
+  console.log('Patient generator scheduled to run every hour (1 patient/batch)');
   
   generatePatientBatch()
     .catch(err => console.error('Error during initial patient generation:', err));

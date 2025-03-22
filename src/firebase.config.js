@@ -4,12 +4,12 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAz6VXWy_ANL4xMjxrHynCwc6iMfROfPQM",
-  authDomain: "smartpatientorder.firebaseapp.com",
-  projectId: "smartpatientorder",
-  storageBucket: "smartpatientorder.appspot.com",
-  messagingSenderId: "917123489319",
-  appId: "1:917123489319:web:abc01bdd82df28a9353802",
+  apiKey: "AIzaSyAH2ViuDrQgUYubuxPIUAqmE8sw-N8fgfw",
+  authDomain: "order-smart-patient.firebaseapp.com",
+  projectId: "order-smart-patient",
+  storageBucket: "order-smart-patient.firebasestorage.app",
+  messagingSenderId: "566889203229",
+  appId: "1:566889203229:web:0ced7a365092ba077f28f4",
 };
 
 console.log('Firebase Config:', firebaseConfig);

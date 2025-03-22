@@ -1,6 +1,6 @@
  // src/seeds/user.seed.js
 import admin from 'firebase-admin';
-import serviceAccount from '../config/smartpatientorder-firebase-adminsdk-fbsvc-d9294d146e.json' assert { type: 'json' };
+import serviceAccount from '../config/order-smart-patient-firebase-adminsdk-fbsvc-5d1b3a05d4.json' assert { type: 'json' };
 
 try {
   console.log('Service account project ID:', serviceAccount.project_id);
